@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import time
@@ -42,21 +43,30 @@ def format_prompt(user_message: str) -> str:
     )
 
 
-# TODO: Use streaming here
 def ask_llm(prompt: str) -> str:
+    """Stream the completion and print tokens as they arrive."""
     payload = {
         "prompt": format_prompt(prompt),
         "temperature": TEMPERATURE,
         "top_p": TOP_P,
         "top_k": TOP_K,
+        "stream": True,
     }
 
-    r = requests.post(f"{SERVER_URL}/completion", json=payload)
-    r.raise_for_status()
-    data = r.json()
-    if "content" not in data:
-        raise RuntimeError(f"Unexpected response from server: {data}")
-    return data["content"]
+    full_response = []
+    with requests.post(f"{SERVER_URL}/completion", json=payload, stream=True) as r:
+        r.raise_for_status()
+        for line in r.iter_lines(decode_unicode=True):
+            if not line or not line.startswith("data: "):
+                continue
+            chunk = json.loads(line[len("data: "):])
+            token = chunk.get("content", "")
+            print(token, end="", flush=True)
+            full_response.append(token)
+            if chunk.get("stop"):
+                break
+
+    return "".join(full_response)
 
 
 if __name__ == "__main__":
@@ -73,8 +83,9 @@ if __name__ == "__main__":
             if user_input.lower() in ["exit", "quit"]:
                 break
 
-            response = ask_llm(user_input)
-            print("\nLLM:", response)
+            print("\nLLM: ", end="", flush=True)
+            ask_llm(user_input)
+            print()  # newline after streamed response
 
     finally:
         server.terminate()

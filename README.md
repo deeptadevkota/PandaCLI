@@ -15,14 +15,24 @@ A local LLM chat interface that runs entirely on your machine. PandaCLI launches
 ## Architecture
 
 ```
-┌────────────┐    POST /completion    ┌──────────────┐
-│ llm_client │ ──────────────────────▶│ llama-server │
-│   (REPL)   │ ◀────────────────────  │  (subprocess)│
-└────────────┘    JSON response       └──────────────┘
+┌────────────┐  POST /completion   ┌──────────────┐
+│ llm_client │ ───────────────────▶│ llama-server │
+│   (REPL)   │ ◀─── SSE stream ── │  (subprocess)│
+└────────────┘  data: {content}    └──────────────┘
+       │                                  ▲
+       │  readiness probe:                │
+       │  POST /completion                │
+       │  {"prompt":"Hi","n_predict":1}   │
+       └──────────────────────────────────┘
 ```
 
 - **`config.py`** — All tuneable parameters: model path, server port, inference settings, and system prompt.
-- **`llm_client.py`** — Server lifecycle (`start_server`, `wait_for_server`), prompt formatting (`format_prompt`), inference (`ask_llm`), and the interactive REPL.
+- **`llm_client.py`** — Server lifecycle (`start_server`, `wait_for_server`), prompt formatting (`format_prompt`), streaming inference (`ask_llm`), and the interactive REPL.
+
+### Key design details
+
+- **Server readiness** — `wait_for_server` sends a trivial completion request (`POST /completion` with `n_predict: 1`) instead of polling `/health`. This confirms the model is fully loaded and can generate tokens, not just that the HTTP server is up. It retries indefinitely on connection errors, timeouts, and HTTP errors (10 s backoff).
+- **Streaming responses** — `ask_llm` sets `"stream": true` and reads Server-Sent Events (`data: …` lines). Each token is printed to the terminal as it arrives, giving the user real-time feedback instead of waiting for the full response.
 
 ## Prerequisites
 
@@ -40,7 +50,7 @@ pip install -r requirements.txt
 python llm_client.py
 ```
 
-The server starts automatically, polls `/health` until ready, then drops you into a chat prompt. Type `exit` or `quit` to stop.
+The server starts automatically, sends a trivial completion to verify the model is loaded, then drops you into a chat prompt. Responses stream to the terminal in real time. Type `exit` or `quit` to stop.
 
 ## Configuration
 

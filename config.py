@@ -6,3 +6,5 @@ SERVER_URL = f"http://localhost:{SERVER_PORT}"
 TEMPERATURE = 0.7
 TOP_P = 0.95
 TOP_K = 64
+
+SYSTEM_PROMPT = "You are a helpful assistant."

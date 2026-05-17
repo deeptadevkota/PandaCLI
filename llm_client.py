@@ -2,7 +2,7 @@ import os
 import subprocess
 import time
 import requests
-from config import MODEL_PATH, SERVER_PORT, SERVER_URL, TEMPERATURE, TOP_P, TOP_K
+from config import MODEL_PATH, SERVER_PORT, SERVER_URL, TEMPERATURE, TOP_P, TOP_K, SYSTEM_PROMPT
 
 
 def start_server():
@@ -33,26 +33,36 @@ def wait_for_server(timeout: int = 100):
     raise TimeoutError(f"LLM server did not become ready within {timeout}s")
 
 
+def format_prompt(user_message: str) -> str:
+    """Wrap the user message in the Gemma 3 IT chat template."""
+    return (
+        f"<start_of_turn>system\n{SYSTEM_PROMPT}<end_of_turn>\n"
+        f"<start_of_turn>user\n{user_message}<end_of_turn>\n"
+        f"<start_of_turn>model\n"
+    )
+
+
 # TODO: Use streaming here
-# TODO: Apply system prompt
-# TODO: Refine prompt format for gemma 4
 def ask_llm(prompt: str) -> str:
     payload = {
-        "prompt": prompt,
+        "prompt": format_prompt(prompt),
         "temperature": TEMPERATURE,
         "top_p": TOP_P,
         "top_k": TOP_K,
     }
 
     r = requests.post(f"{SERVER_URL}/completion", json=payload)
-    return r.json()["content"]
+    r.raise_for_status()
+    data = r.json()
+    if "content" not in data:
+        raise RuntimeError(f"Unexpected response from server: {data}")
+    return data["content"]
 
 
 if __name__ == "__main__":
     print("Starting LLM server...")
     server = start_server()
 
-    # TODO: Instead of a predefined wait, keeping pinging the server to know if it is alive
     wait_for_server()
 
     print("LLM server has started...")

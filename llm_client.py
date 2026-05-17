@@ -19,19 +19,23 @@ def start_server():
     return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def wait_for_server(timeout: int = 100):
-    """Poll until the server is ready or timeout is reached."""
+def wait_for_server():
+    """Poll until the server can complete a trivial prompt."""
     print("Waiting for server to be ready", end="", flush=True)
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    while True:
         try:
-            requests.get(f"{SERVER_URL}/health", timeout=1)
+            resp = requests.post(
+                f"{SERVER_URL}/completion",
+                json={"prompt": "Hi", "n_predict": 1},
+                timeout=10,
+            )
+            resp.raise_for_status()
             print(" ready!")
             return
-        except requests.exceptions.ConnectionError:
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
+                requests.exceptions.HTTPError):
             print(".", end="", flush=True)
-            time.sleep(1)
-    raise TimeoutError(f"LLM server did not become ready within {timeout}s")
+            time.sleep(10)
 
 
 def format_prompt(user_message: str) -> str:
